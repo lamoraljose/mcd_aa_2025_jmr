@@ -1,0 +1,123 @@
+\documentclass[preprint,12pt]{elsarticle}
+
+% ===== Paquetes mínimos y robustos =====
+\usepackage[spanish,es-nodecimaldot]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage[hidelinks]{hyperref}
+\usepackage{microtype}
+\usepackage{float}
+
+\journal{(Artículo académico — Proyecto de Aprendizaje Automático)}
+
+\begin{document}
+\begin{frontmatter}
+
+\title{Predicción supervisada de \textit{churn} bancario: metodología, resultados y discusión}
+\author{Jose Morales Rendón}
+\address{Facultad de Ciencias Físico–Matemáticas, UANL}
+
+% (Sin abstract; dejamos keywords en el frontmatter)
+\begin{keyword}
+Churn \sep Clasificación binaria \sep Regresión Logística \sep Banca \sep Aprendizaje supervisado
+\end{keyword}
+
+\end{frontmatter}
+
+% ==============================================================
+\section*{Contexto}
+Se aborda la predicción de abandono de clientes (\textit{churn}) en banca como un problema de \textbf{clasificación binaria} con clases desbalanceadas. Se emplea \emph{Regresión Logística} por su interpretabilidad y capacidad para entregar probabilidades calibradas, integrando un flujo de preprocesamiento (escalado y codificación \emph{one-hot}) en un \emph{pipeline} reproducible. En el conjunto \texttt{BankChurners} (10{,}127 observaciones; 18 variables; 16.07\% de churn) el modelo alcanza \textbf{ROC-AUC = 0.90}, con \textbf{recall} de 0.82 para la clase positiva, lo que resulta adecuado para escenarios donde el costo de no detectar a un cliente que se irá es mayor que el de intervenir a uno que permanecería.
+
+% ==============================================================
+\section{Metodología}
+
+\paragraph{Problema y datos.}
+El objetivo es estimar la probabilidad de abandono de cada cliente (\texttt{Churn}=1 si abandona; 0 en caso contrario) a partir de variables demográficas y transaccionales. El dataset \texttt{BankChurners.csv} contiene 10{,}127 registros y 18 variables; la proporción de la clase positiva es 16.07\% (desbalance moderado).
+
+\paragraph{Modelo.}
+Se emplea \textbf{Regresión Logística} como línea base interpretable. Dado un vector de predictores \(x\in\mathbb{R}^p\), el modelo estima:
+\begin{equation}
+P(y=1\mid x) \;=\; \sigma\!\left(\beta_0 + \beta^\top x\right) \;=\; \frac{1}{1 + e^{-(\beta_0 + \beta^\top x)}}\,,
+\end{equation}
+ajustando \(\beta\) por máxima verosimilitud. Para mitigar el desbalance se utiliza \verb|class_weight=balanced|.
+
+\paragraph{Preprocesamiento y validación.}
+Las variables numéricas se escalan con \emph{StandardScaler} y las categóricas se codifican con \emph{One-Hot Encoder}, todo dentro de un \emph{ColumnTransformer}. Se realiza partición entrenamiento/prueba 75/25 con estratificación para preservar la proporción de clases. El \emph{pipeline} (\emph{preprocesador} + \emph{modelo}) garantiza reproducibilidad y facilita la futura incorporación de otros algoritmos.
+
+% ==============================================================
+\section{Métricas de evaluación}
+
+Al ser un problema de clasificación binaria, se emplean métricas derivadas de la matriz de confusión y de curvas basadas en probabilidades:
+\begin{itemize}
+  \item \textbf{Accuracy}: proporción global de aciertos (puede ser engañosa con desbalance).
+  \item \textbf{Precision} y \textbf{Recall} de la clase positiva (churn): calidad de alertas y cobertura de verdaderos abandonos.
+  \item \textbf{F1-score}: media armónica entre \emph{Precision} y \emph{Recall}.
+  \item \textbf{ROC-AUC}: capacidad de discriminación independiente del umbral.
+  \item \textbf{PR-AUC}: área bajo la curva \emph{Precision–Recall}, relevante en casos de desbalance severo.
+\end{itemize}
+
+% ==============================================================
+\section{Resultados}
+
+En el conjunto de prueba, el modelo logra:
+\begin{itemize}
+  \item \textbf{Accuracy}: 0.84
+  \item \textbf{Recall (clase churn)}: 0.82
+  \item \textbf{Precision (clase churn)}: 0.49
+  \item \textbf{F1-score (clase churn)}: 0.62
+  \item \textbf{ROC-AUC}: 0.90
+\end{itemize}
+
+La matriz de confusión mostró una alta detección de la clase positiva, con falsos positivos moderados, consistente con una política que prioriza cobertura sobre pureza en alertas.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.75\textwidth]{roc_curve.png}
+  \caption{Curva ROC del modelo de Regresión Logística. El área bajo la curva (AUC = 0.90) evidencia una alta capacidad de discriminación.}
+  \label{fig:roc}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.6\textwidth]{conf_matrix.png}
+  \caption{Matriz de confusión del modelo. Se observa un alto número de verdaderos negativos y un \emph{recall} del 82\% para la clase \textit{churn}.}
+  \label{fig:cm}
+\end{figure}
+
+% ==============================================================
+\section{Discusión}
+
+El rendimiento (AUC cercano a 0.90) confirma que una línea base interpretable puede ser competitiva para priorización de campañas de retención. El \textbf{recall elevado} es deseable cuando el costo de un falso negativo (no intervenir a un cliente que se va) supera el de un falso positivo (intervenir a un cliente que permanecería). 
+
+Para mejorar la \emph{precision} sin sacrificar demasiado \emph{recall}, se sugiere: (i) ajuste de umbral según una matriz de costos, (ii) comparación con \emph{Random Forest} o \emph{XGBoost}, y (iii) análisis de explicabilidad (p.\,ej., valores SHAP) para identificar impulsores del churn y diseñar intervenciones específicas.
+
+% ==============================================================
+\section{Conclusión}
+
+El modelo de Regresión Logística demostró ser una herramienta sólida, equilibrando precisión y sensibilidad en un contexto de datos desbalanceados. Su simplicidad y transparencia lo convierten en un excelente punto de partida para estrategias analíticas en banca.
+
+Los resultados (AUC = 0.90, Recall = 0.82) validan que una implementación bien estructurada puede alcanzar desempeño de nivel profesional sin recurrir a modelos complejos.  
+Además, la metodología propuesta —preprocesamiento, validación estratificada y evaluación mediante múltiples métricas— sienta una base robusta para la extensión hacia modelos más avanzados y explicables.
+
+\bigskip
+\textbf{En síntesis:} este proyecto demuestra que los datos no solo describen el pasado; bien analizados, anticipan el futuro.  
+Cada cliente detectado a tiempo representa una oportunidad ganada y un paso más hacia una banca más inteligente y centrada en las personas.
+
+% ==============================================================
+\section*{Reproducibilidad}
+El flujo se implementó en Python (\texttt{scikit-learn}) con un \emph{pipeline} que integra preprocesamiento y modelado. La partición fue 75/25 con estratificación, y se calcularon métricas de desempeño junto con las curvas ROC y PR.  
+Los gráficos fueron generados automáticamente y exportados como \texttt{roc\_curve.png} y \texttt{conf\_matrix.png} para su documentación visual.
+
+% \section*{Agradecimientos}
+% (Opcional) Agradecimientos a docentes, mentores o instituciones de apoyo.
+
+\bibliographystyle{elsarticle-num}
+% \begin{thebibliography}{00}
+% \bibitem{ref1} Breve referencia si la necesitas.
+% \end{thebibliography}
+
+\end{document}
