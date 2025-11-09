@@ -1,0 +1,247 @@
+\documentclass[preprint,12pt]{elsarticle}
+
+% ===== Paquetes mínimos y robustos =====
+\usepackage[spanish,es-nodecimaldot]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage[hidelinks]{hyperref}
+\usepackage{microtype}
+\usepackage{float}
+
+\journal{(Artículo académico — Proyecto de Aprendizaje Automático)}
+
+\begin{document}
+\begin{frontmatter}
+
+\title{Predicción supervisada de \textit{churn} bancario: metodología, resultados y discusión}
+\author{Jose Morales Rendón}
+\address{Facultad de Ciencias Físico–Matemáticas, UANL}
+
+% (Sin abstract; sin keywords)
+
+\end{frontmatter}
+
+% ==============================================================
+\section*{Contexto}
+Se aborda la predicción de abandono de clientes (\textit{churn}) en banca como un problema de \textbf{clasificación binaria} con clases desbalanceadas. Se emplea \emph{Regresión Logística} por su interpretabilidad y capacidad para entregar probabilidades calibradas, integrando un flujo de preprocesamiento (escalado y codificación \emph{one-hot}) en un \emph{pipeline} reproducible. En el conjunto \texttt{BankChurners} (10{,}127 observaciones; 18 variables; 16.07\% de churn) el modelo alcanza \textbf{ROC-AUC = 0.90}, con \textbf{recall} de 0.82 para la clase positiva, lo que resulta adecuado para escenarios donde el costo de no detectar a un cliente que se irá es mayor que el de intervenir a uno que permanecería.
+
+% ==============================================================
+\section{Marco teórico}
+
+\subsection{Métricas de desempeño en clasificación con desbalance}
+La evaluación de clasificadores depende de la distribución de clases y los objetivos operativos. En escenarios con clases desbalanceadas como el \emph{churn}, la \emph{accuracy} aislada puede resultar poco informativa, por lo que la literatura recomienda métricas que capturen mejor la discriminación y la pureza de las alertas \cite{fawcett2006,saito2015}.
+
+\paragraph{Precision, Recall, $F_\beta$.}
+Sean VP, FP, FN y VN, se definen
+\[
+\text{Precision}=\frac{VP}{VP+FP},\quad
+\text{Recall}=\frac{VP}{VP+FN},\quad
+F_\beta=\frac{(1+\beta^2)\cdot \text{Precision}\cdot \text{Recall}}{\beta^2\cdot \text{Precision}+\text{Recall}}.
+\]
+Cuando el costo de FN $>$ FP, conviene $\beta>1$ (p.\,ej., $F_2$) para priorizar la cobertura de la clase positiva \cite{sammut2017}.
+
+\paragraph{ROC-AUC y PR-AUC.}
+El área bajo la curva ROC (AUC) resume la capacidad discriminativa \emph{independiente del umbral} \cite{fawcett2006}. No obstante, en clases raras o desbalance pronunciado, PR-AUC (área bajo la curva Precision–Recall) refleja mejor el rendimiento, al enfocarse en precisión y cobertura de la clase positiva \cite{davis2006,saito2015}.
+
+\paragraph{Calidad probabilística: LogLoss y Brier.}
+Cuando el modelo produce probabilidades, es recomendable evaluar su calidad/calibración con LogLoss y Brier score \cite{niculescu2005,brier1950}. El Brier es el error cuadrático medio entre la probabilidad estimada y la etiqueta; valores menores indican mejor calibración.
+
+\paragraph{Curvas de \emph{lift}/\emph{gain} y KS.}
+Para priorización comercial (p.\,ej., campañas de retención), son comunes los deciles de \emph{lift}/\emph{gain} y el estadístico KS, ampliamente reportados en \emph{scoring} de crédito y \emph{churn} \cite{sammut2017}.
+
+\subsection{Métricas seleccionadas para este estudio}
+En línea con la evidencia:
+\begin{itemize}
+    \item \textbf{Métrica primaria:} \textbf{PR-AUC} \cite{saito2015}, por su sensibilidad a la pureza de alertas en presencia de desbalance.
+    \item \textbf{Métricas secundarias:} (i) \textbf{$F_2$} (pondera \emph{recall}), (ii) \textbf{Recall@Precision$\geq$0.60} (garantiza pureza mínima operativa), (iii) \textbf{Brier score} para calibración \cite{brier1950,niculescu2005}.
+    \item \textbf{Reporte complementario:} curvas PR/ROC y deciles de \emph{lift} para interpretación operativa.
+\end{itemize}
+
+\subsection{Diseño de experimentos (DOE)}
+Se plantea un DOE factorial para estudiar el impacto del algoritmo, el tratamiento del desbalance y la política de umbral sobre las métricas anteriores.
+
+\paragraph{Factores y niveles.}
+\begin{itemize}
+    \item \textbf{A: Algoritmo} (3 niveles): Regresión Logística (LR), Random Forest (RF), XGBoost (XGB).
+    \item \textbf{B: Tratamiento del desbalance} (3 niveles): \verb|class_weight=balanced| (CW), SMOTE (SM), submuestreo aleatorio (US).
+    \item \textbf{C: Política de umbral} (3 niveles): (C1) 0.50 fijo, (C2) índice de Youden en ROC, (C3) umbral que maximiza $F_2$ o satisface Precision$\geq$0.60 en validación.
+\end{itemize}
+
+\paragraph{Tratamientos y evaluación.}
+El diseño factorial completo considera \(3\times 3\times 3=27\) tratamientos. Cada tratamiento se evalúa con validación cruzada estratificada ($K{=}5$) para estabilidad. Las respuestas experimentales son: \textbf{PR-AUC} (primaria) y, como secundarias, \textbf{$F_2$}, \textbf{Recall@Precision$\geq$0.60} y \textbf{Brier}. Se fija semilla y se aleatoriza el orden de tratamientos por \emph{fold}.
+
+\paragraph{Criterio de selección.}
+Se elige el tratamiento con mayor PR-AUC promedio; a igualdad práctica, se favorece mayor Recall@Precision$\geq$0.60 y menor Brier. Para comparaciones de AUC-ROC entre modelos \emph{pareados} por \emph{fold} puede emplearse la prueba de DeLong.
+
+\paragraph{Conexión con los resultados del artículo.}
+El \textbf{tratamiento de referencia} que se reporta en la Sección \emph{Resultados} corresponde a \textbf{A1: LR} + \textbf{B1: CW} + \textbf{C1: umbral 0.50} (predicción estándar de \texttt{scikit-learn}). Dicho tratamiento alcanza \emph{ROC-AUC}=0.90 y \emph{Recall}=0.82, coherente con una política que prioriza cobertura. El DOE propuesto permite contrastar este tratamiento base contra alternativas (RF/XGB, SMOTE/US y reglas de umbral orientadas a $F_2$ o Precision mínima), manteniendo el mismo flujo de preprocesamiento para asegurar comparabilidad.
+
+% ==============================================================
+\section{Metodología}
+
+La metodología adoptada se fundamenta en enfoques ampliamente documentados en la literatura sobre predicción de abandono en servicios financieros.  
+Según \cite{verbeke2012}, la \textbf{Regresión Logística} es uno de los modelos más interpretables y eficaces para problemas de \emph{churn prediction}, permitiendo estimar probabilidades calibradas y analizar la influencia individual de las variables.  
+El uso de \emph{pipelines} y la codificación \emph{one-hot} sigue las recomendaciones de \cite{pedregosa2011}, quienes destacan la importancia de integrar preprocesamiento y modelado para garantizar reproducibilidad y evitar fugas de datos.  
+Asimismo, métricas como ROC-AUC y F1-score son consideradas estándar para evaluar clasificadores en contextos desbalanceados \cite{sammut2017}, al reflejar la capacidad discriminativa y el equilibrio entre precisión y sensibilidad.  
+Finalmente, el tratamiento del desbalance mediante \verb|class_weight=balanced| se sustenta en estudios que evidencian mejoras en la detección de la clase minoritaria sin necesidad de sobremuestreo \cite{he2009}.
+
+\paragraph{Problema y datos.}
+El objetivo es estimar la probabilidad de abandono de cada cliente (\texttt{Churn}=1 si abandona; 0 en caso contrario) a partir de variables demográficas y transaccionales. El dataset \texttt{BankChurners.csv} contiene 10{,}127 registros y 18 variables; la proporción de la clase positiva es 16.07\% (desbalance moderado).
+
+\paragraph{Modelo.}
+Se emplea \textbf{Regresión Logística} como línea base interpretable. Dado un vector de predictores \(x\in\mathbb{R}^p\), el modelo estima:
+\begin{equation}
+P(y=1\mid x) \;=\; \sigma\!\left(\beta_0 + \beta^\top x\right) \;=\; \frac{1}{1 + e^{-(\beta_0 + \beta^\top x)}}\,,
+\end{equation}
+ajustando \(\beta\) por máxima verosimilitud. Para mitigar el desbalance se utiliza \verb|class_weight=balanced|.
+
+\paragraph{Preprocesamiento y validación.}
+Las variables numéricas se escalan con \emph{StandardScaler} y las categóricas se codifican con \emph{One-Hot Encoder}, todo dentro de un \emph{ColumnTransformer}. Se realiza partición entrenamiento/prueba 75/25 con estratificación para preservar la proporción de clases. El \emph{pipeline} (\emph{preprocesador} + \emph{modelo}) garantiza reproducibilidad y facilita la futura incorporación de otros algoritmos.
+
+% ==============================================================
+\section{Métricas de evaluación}
+
+Al ser un problema de clasificación binaria, se emplean métricas derivadas de la matriz de confusión y de curvas basadas en probabilidades:
+\begin{itemize}
+  \item \textbf{Accuracy}: proporción global de aciertos (puede ser engañosa con desbalance).
+  \item \textbf{Precision} y \textbf{Recall} de la clase positiva (churn): calidad de alertas y cobertura de verdaderos abandonos.
+  \item \textbf{F1-score}: media armónica entre \emph{Precision} y \emph{Recall}.
+  \item \textbf{ROC-AUC}: capacidad de discriminación independiente del umbral.
+  \item \textbf{PR-AUC}: área bajo la curva \emph{Precision–Recall}, relevante en casos de desbalance severo.
+\end{itemize}
+
+% ==============================================================
+\section{Resultados}
+
+En el conjunto de prueba, el modelo logra:
+\begin{itemize}
+  \item \textbf{Accuracy}: 0.84
+  \item \textbf{Recall (clase churn)}: 0.82
+  \item \textbf{Precision (clase churn)}: 0.49
+  \item \textbf{F1-score (clase churn)}: 0.62
+  \item \textbf{ROC-AUC}: 0.90
+\end{itemize}
+
+La matriz de confusión mostró una alta detección de la clase positiva, con falsos positivos moderados, consistente con una política que prioriza cobertura sobre pureza en alertas.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.75\textwidth]{roc_curve.png}
+  \caption{Curva ROC del modelo de Regresión Logística. El área bajo la curva (AUC = 0.90) evidencia una alta capacidad de discriminación.}
+  \label{fig:roc}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.6\textwidth]{conf_matrix.png}
+  \caption{Matriz de confusión del modelo. Se observa un alto número de verdaderos negativos y un \emph{recall} del 82\% para la clase \textit{churn}.}
+  \label{fig:cm}
+\end{figure}
+
+% ---- NUEVO: Comparación experimental ----
+\subsection*{Comparación experimental de modelos}
+
+Como extensión del tratamiento base, se realizó un diseño de experimentos (DOE) simplificado para comparar la \textbf{Regresión Logística (LR)} con un \textbf{Random Forest (RF)} bajo el mismo flujo de preprocesamiento.  
+Ambos modelos fueron entrenados con partición 75/25 estratificada, utilizando \verb|class_weight=balanced| y las métricas definidas en el marco teórico.
+
+\begin{table}[H]
+\centering
+\caption{Comparativa de desempeño entre modelos supervisados (conjunto de prueba).}
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Modelo} & \textbf{PR-AUC} & \textbf{ROC-AUC} & \textbf{Brier} & \textbf{Recall@P$\geq$0.60} & \textbf{$F_2$@P$\geq$0.60} & \textbf{Umbral}\\
+\midrule
+Random Forest & 0.892 & 0.975 & 0.049 & 0.956 & 0.858 & 0.16\\
+Regresión Logística & 0.668 & 0.904 & 0.119 & 0.695 & 0.674 & 0.69\\
+\bottomrule
+\end{tabular}
+\label{tab:doe_results}
+\end{table}
+
+Los resultados muestran que el modelo \textbf{Random Forest} supera ampliamente a la Regresión Logística en todas las métricas relevantes para escenarios de abandono.  
+El \emph{PR-AUC} (0.89) confirma una mejor capacidad para priorizar clientes en riesgo cuando las clases están desbalanceadas, mientras que el \emph{ROC-AUC} (0.97) evidencia una discriminación casi perfecta entre clientes que abandonan y los que permanecen.  
+Además, el \textbf{Brier score} (0.049 frente a 0.119) indica que las probabilidades generadas por el RF están mejor calibradas.  
+Al exigir una \textbf{precisión mínima del 60\%}, el RF alcanza una cobertura del \textbf{95.6\%} de los casos de \emph{churn}, frente al 69.5\% de la LR, logrando un \emph{$F_2$}=0.86 (vs.\ 0.67), lo que refleja un equilibrio superior entre detección y pureza de alertas.  
+Estos resultados validan la conveniencia de explorar modelos no lineales en flujos de retención bancaria.
+
+% ==============================================================
+\section{Discusión}
+
+El rendimiento global del modelo base (Regresión Logística, AUC = 0.90) confirma que un clasificador interpretable puede ofrecer resultados competitivos en la detección de abandono.  
+Sin embargo, el DOE comparativo reveló que \textbf{Random Forest} ofrece un desempeño superior, con \emph{PR-AUC} y \emph{Recall@Precision$\geq$0.60} significativamente mayores.  
+Esto sugiere que la incorporación de relaciones no lineales y la agregación de múltiples árboles permiten capturar mejor las interacciones entre variables demográficas y transaccionales que explican la propensión al churn.  
+En términos operativos, un RF calibrado ofrece la posibilidad de mantener una precisión mínima aceptable sin sacrificar cobertura, lo que se traduce en intervenciones más efectivas y con menor riesgo de omitir clientes en riesgo real.
+
+% ==============================================================
+\section{Conclusión}
+
+El modelo de Regresión Logística demostró ser una herramienta sólida, equilibrando precisión y sensibilidad en un contexto de datos desbalanceados. Su simplicidad y transparencia lo convierten en un excelente punto de partida para estrategias analíticas en banca.  
+Los resultados comparativos del DOE muestran que \textbf{Random Forest} puede incrementar sustancialmente la efectividad de priorización al mejorar la PR-AUC y la cobertura bajo restricciones de precisión, manteniendo una calibración más favorable.  
+En conjunto, la metodología propuesta —preprocesamiento, validación estratificada y evaluación mediante múltiples métricas— sienta una base robusta para la extensión hacia modelos más avanzados y explicables.
+
+\bigskip
+\textbf{En síntesis:} este proyecto demuestra que los datos no solo describen el pasado; bien analizados, anticipan el futuro.  
+Cada cliente detectado a tiempo representa una oportunidad ganada y un paso más hacia una banca más inteligente y centrada en las personas.
+
+% ==============================================================
+\section*{Reproducibilidad}
+El flujo se implementó en Python (\texttt{scikit-learn}) con un \emph{pipeline} que integra preprocesamiento y modelado. La partición fue 75/25 con estratificación, y se calcularon métricas de desempeño junto con las curvas ROC y PR.  
+Los gráficos fueron generados automáticamente y exportados como \texttt{roc\_curve.png} y \texttt{conf\_matrix.png} para su documentación visual.
+
+% ==============================================================
+\bibliographystyle{elsarticle-num}
+\begin{thebibliography}{00}
+
+\bibitem{verbeke2012}
+W. Verbeke, K. Dejaeger, D. Martens, J. Hur, and B. Baesens,
+``New insights into churn prediction in the telecommunication sector: A profit driven data mining approach,''
+\textit{European Journal of Operational Research}, vol. 218, no. 1, pp. 211–229, 2012.
+
+\bibitem{pedregosa2011}
+F. Pedregosa, G. Varoquaux, A. Gramfort, et al.,
+``Scikit-learn: Machine Learning in Python,''
+\textit{Journal of Machine Learning Research}, vol. 12, pp. 2825–2830, 2011.
+
+\bibitem{sammut2017}
+C. Sammut and G. I. Webb,
+\textit{Encyclopedia of Machine Learning and Data Mining.}
+Springer, 2017.
+
+\bibitem{he2009}
+H. He and E. A. Garcia,
+``Learning from imbalanced data,''
+\textit{IEEE Transactions on Knowledge and Data Engineering}, vol. 21, no. 9, pp. 1263–1284, 2009.
+
+% ======= Referencias para el Marco teórico / métricas =======
+\bibitem{fawcett2006}
+T. Fawcett,
+``An introduction to ROC analysis,''
+\textit{Pattern Recognition Letters}, vol. 27, no. 8, pp. 861--874, 2006.
+
+\bibitem{davis2006}
+J. Davis and M. Goadrich,
+``The relationship between Precision-Recall and ROC curves,''
+In \textit{Proceedings of the 23rd International Conference on Machine Learning (ICML)}, 2006.
+
+\bibitem{saito2015}
+T. Saito and M. Rehmsmeier,
+``The precision-recall plot is more informative than the ROC plot when evaluating binary classifiers on imbalanced datasets,''
+\textit{PLOS ONE}, vol. 10, no. 3, e0118432, 2015.
+
+\bibitem{niculescu2005}
+A. Niculescu-Mizil and R. Caruana,
+``Predicting good probabilities with supervised learning,''
+In \textit{Proceedings of the 22nd International Conference on Machine Learning (ICML)}, 2005.
+
+\bibitem{brier1950}
+G. W. Brier,
+``Verification of forecasts expressed in terms of probability,''
+\textit{Monthly Weather Review}, vol. 78, no. 1, pp. 1--3, 1950.
+
+\end{thebibliography}
+
+\end{document}
